@@ -1,4 +1,4 @@
-defmodule LogStreamDashboard do
+defmodule TimelessLogsDashboard do
   @moduledoc """
   Phoenix LiveDashboard page for browsing TimelessLogs logs.
 
@@ -8,7 +8,7 @@ defmodule LogStreamDashboard do
 
       live_dashboard "/dashboard",
         additional_pages: [
-          logs: LogStreamDashboard.Page
+          logs: TimelessLogsDashboard.Page
         ]
 
   Provides three tabs: **Search** (query with filters + pagination),

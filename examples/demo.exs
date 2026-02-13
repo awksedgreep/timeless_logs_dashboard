@@ -1,4 +1,4 @@
-# Minimal Phoenix app to demo LogStreamDashboard.
+# Minimal Phoenix app to demo TimelessLogsDashboard.
 #
 # Run:  mix run examples/demo.exs
 # Open: http://localhost:4040/dashboard/logs
@@ -27,13 +27,13 @@ defmodule Demo.Router do
 
     live_dashboard "/dashboard",
       additional_pages: [
-        logs: LogStreamDashboard.Page
+        logs: TimelessLogsDashboard.Page
       ]
   end
 end
 
 defmodule Demo.Endpoint do
-  use Phoenix.Endpoint, otp_app: :log_stream_dashboard
+  use Phoenix.Endpoint, otp_app: :timeless_logs_dashboard
 
   @session_options [
     store: :cookie,
@@ -55,7 +55,7 @@ end
 Application.put_env(:phoenix, :json_library, Jason)
 
 # Configure endpoint
-Application.put_env(:log_stream_dashboard, Demo.Endpoint,
+Application.put_env(:timeless_logs_dashboard, Demo.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [port: 4040],
   url: [host: "localhost"],
@@ -96,7 +96,7 @@ Application.put_env(:timeless_logs, :compaction_max_raw_age, 30)
 IO.puts("""
 
 ========================================
-  LogStreamDashboard Demo
+  TimelessLogsDashboard Demo
   http://localhost:4040/dashboard/logs
 ========================================
 

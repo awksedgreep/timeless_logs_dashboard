@@ -1,4 +1,4 @@
-defmodule LogStreamDashboard.Components do
+defmodule TimelessLogsDashboard.Components do
   @moduledoc false
   use Phoenix.Component
 

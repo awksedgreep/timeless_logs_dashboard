@@ -1,8 +1,8 @@
-defmodule LogStreamDashboard.Page do
+defmodule TimelessLogsDashboard.Page do
   @moduledoc false
   use Phoenix.LiveDashboard.PageBuilder, refresher?: false
 
-  import LogStreamDashboard.Components
+  import TimelessLogsDashboard.Components
 
   @tail_cap 200
 

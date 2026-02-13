@@ -1,12 +1,12 @@
-defmodule LogStreamDashboard.MixProject do
+defmodule TimelessLogsDashboard.MixProject do
   use Mix.Project
 
   @version "0.5.0"
-  @source_url "https://github.com/awksedgreep/log_stream_dashboard"
+  @source_url "https://github.com/awksedgreep/timeless_logs_dashboard"
 
   def project do
     [
-      app: :log_stream_dashboard,
+      app: :timeless_logs_dashboard,
       version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
