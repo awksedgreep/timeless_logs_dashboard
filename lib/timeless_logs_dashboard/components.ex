@@ -230,10 +230,12 @@ defmodule TimelessLogsDashboard.Components do
         <div class="card">
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Compressed Blocks</h6>
+            <% compressed_blocks = @stats.zstd_blocks + Map.get(@stats, :openzl_blocks, 0) %>
+            <% compressed_bytes = @stats.zstd_bytes + Map.get(@stats, :openzl_bytes, 0) %>
             <h4 class="mb-0">
-              {@stats.zstd_blocks}
+              {compressed_blocks}
               <small class="text-muted" style="font-size: 0.6em;">
-                ({format_bytes(@stats.zstd_bytes)})
+                ({format_bytes(compressed_bytes)})
               </small>
             </h4>
           </div>
@@ -243,15 +245,18 @@ defmodule TimelessLogsDashboard.Components do
         <div class="card">
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Compression Ratio</h6>
+            <% compressed_blocks = @stats.zstd_blocks + Map.get(@stats, :openzl_blocks, 0) %>
+            <% compressed_bytes = @stats.zstd_bytes + Map.get(@stats, :openzl_bytes, 0) %>
+            <% compressed_entries = @stats.zstd_entries + Map.get(@stats, :openzl_entries, 0) %>
             <h4 class="mb-0">
-              {if @stats.zstd_entries > 0 and @stats.raw_entries > 0 do
+              {if compressed_entries > 0 and @stats.raw_entries > 0 do
                 raw_per = @stats.raw_bytes / @stats.raw_entries
-                zstd_per = @stats.zstd_bytes / @stats.zstd_entries
-                ratio = raw_per / zstd_per
+                comp_per = compressed_bytes / compressed_entries
+                ratio = raw_per / comp_per
                 pct = Float.round((1 - 1 / ratio) * 100, 1)
                 "#{Float.round(ratio, 1)}x (#{pct}%)"
               else
-                if @stats.zstd_blocks > 0, do: "compressed", else: "pending"
+                if compressed_blocks > 0, do: "compressed", else: "pending"
               end}
             </h4>
           </div>
