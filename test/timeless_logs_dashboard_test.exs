@@ -11,7 +11,7 @@ defmodule TimelessLogsDashboardTest do
     assert function_exported?(TimelessLogsDashboard.Page, :handle_info, 2)
   end
 
-  test "menu_link returns ok with Logs label" do
-    assert {:ok, "Logs"} = TimelessLogsDashboard.Page.menu_link(%{}, %{})
+  test "menu_link returns ok with TimelessLogs label" do
+    assert {:ok, "TimelessLogs"} = TimelessLogsDashboard.Page.menu_link(%{}, %{})
   end
 end

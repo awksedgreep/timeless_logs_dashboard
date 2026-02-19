@@ -8,7 +8,7 @@ defmodule TimelessLogsDashboard.Page do
 
   @impl true
   def menu_link(_, _) do
-    {:ok, "Logs"}
+    {:ok, "TimelessLogs"}
   end
 
   @impl true
