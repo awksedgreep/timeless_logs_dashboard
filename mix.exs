@@ -1,7 +1,7 @@
 defmodule TimelessLogsDashboard.MixProject do
   use Mix.Project
 
-  @version "0.5.1"
+  @version "0.6.0"
   @source_url "https://github.com/awksedgreep/timeless_logs_dashboard"
 
   def project do
@@ -32,7 +32,8 @@ defmodule TimelessLogsDashboard.MixProject do
       {:phoenix_live_view, "~> 1.0"},
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.6"},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:igniter, "~> 0.6", optional: true}
     ]
   end
 
