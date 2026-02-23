@@ -99,8 +99,15 @@ defmodule TimelessLogsDashboard.Components do
 
   defp entry_row(assigns) do
     meta = assigns.entry.metadata || %{}
-    trace_id = Map.get(meta, "trace_id") || Map.get(meta, :trace_id)
-    other_meta = meta |> Map.drop(["trace_id", :trace_id])
+
+    trace_id =
+      Map.get(meta, "trace_id") || Map.get(meta, :trace_id) ||
+        Map.get(meta, "otel_trace_id") || Map.get(meta, :otel_trace_id)
+
+    other_meta =
+      meta
+      |> Map.drop(["trace_id", :trace_id, "otel_trace_id", :otel_trace_id,
+                    "span_id", :span_id, "otel_span_id", :otel_span_id])
 
     trace_link =
       if trace_id && assigns.traces_page && assigns.socket && assigns.page do
