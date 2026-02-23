@@ -32,7 +32,7 @@ defmodule TimelessLogsDashboard.Page do
     assigns = assign(assigns, :nav, Map.get(assigns.page.params, "nav", "search"))
 
     ~H"""
-    <.live_nav_bar id="log-tabs" page={@page} extra_params={["search", "level", "p", "per_page"]}>
+    <.live_nav_bar id="log-tabs" page={@page} extra_params={["search", "level", "p", "per_page", "since", "until", "trace_id"]}>
       <:item name="search" label="Search"><span></span></:item>
       <:item name="stats" label="Stats"><span></span></:item>
       <:item name="tail" label="Live Tail"><span></span></:item>
@@ -47,6 +47,7 @@ defmodule TimelessLogsDashboard.Page do
       per_page={@per_page}
       page={@page}
       socket={@socket}
+      traces_page={:traces}
     />
     <.stats_tab :if={@nav == "stats"} stats={@stats} />
     <.tail_tab :if={@nav == "tail"} entries={@tail_entries} subscribed={@subscribed} />
@@ -63,11 +64,17 @@ defmodule TimelessLogsDashboard.Page do
   defp apply_nav("search", params, socket) do
     search = Map.get(params, "search", "")
     level = Map.get(params, "level", "")
+    since = Map.get(params, "since", "")
+    until_param = Map.get(params, "until", "")
+    trace_id = Map.get(params, "trace_id", "")
     per_page = params |> Map.get("per_page", "25") |> String.to_integer() |> max(1) |> min(100)
     current_page = params |> Map.get("p", "1") |> String.to_integer() |> max(1)
     offset = (current_page - 1) * per_page
 
     filters = build_filters(search, level)
+    filters = if since != "", do: [{:since, String.to_integer(since)} | filters], else: filters
+    filters = if until_param != "", do: [{:until, String.to_integer(until_param)} | filters], else: filters
+    filters = if trace_id != "", do: [{:metadata, %{"trace_id" => trace_id}} | filters], else: filters
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc]
 
     case TimelessLogs.query(query_opts) do

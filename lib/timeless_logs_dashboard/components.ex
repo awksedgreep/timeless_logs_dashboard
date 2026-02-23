@@ -12,6 +12,7 @@ defmodule TimelessLogsDashboard.Components do
   attr(:per_page, :integer, required: true)
   attr(:page, :any, required: true)
   attr(:socket, :any, required: true)
+  attr(:traces_page, :atom, default: nil)
 
   def search_tab(assigns) do
     total_pages = max(1, ceil(assigns.total / assigns.per_page))
@@ -72,7 +73,7 @@ defmodule TimelessLogsDashboard.Components do
               <tr :if={@entries == []}>
                 <td colspan="4" class="text-center text-muted py-4">No log entries found.</td>
               </tr>
-              <.entry_row :for={entry <- @entries} entry={entry} />
+              <.entry_row :for={entry <- @entries} entry={entry} page={@page} socket={@socket} traces_page={@traces_page} />
             </tbody>
           </table>
           <.pagination
@@ -92,8 +93,29 @@ defmodule TimelessLogsDashboard.Components do
   end
 
   attr(:entry, :any, required: true)
+  attr(:page, :any, default: nil)
+  attr(:socket, :any, default: nil)
+  attr(:traces_page, :atom, default: nil)
 
   defp entry_row(assigns) do
+    meta = assigns.entry.metadata || %{}
+    trace_id = Map.get(meta, "trace_id") || Map.get(meta, :trace_id)
+    other_meta = meta |> Map.drop(["trace_id", :trace_id])
+
+    trace_link =
+      if trace_id && assigns.traces_page && assigns.socket && assigns.page do
+        Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
+          assigns.socket, assigns.traces_page, assigns.page.node, %{},
+          %{"nav" => "traces", "trace_id" => to_string(trace_id)}
+        )
+      end
+
+    assigns =
+      assigns
+      |> assign(:trace_id, trace_id)
+      |> assign(:trace_link, trace_link)
+      |> assign(:other_meta, other_meta)
+
     ~H"""
     <tr>
       <td class="text-monospace" style="font-size: 0.8rem;">
@@ -104,7 +126,14 @@ defmodule TimelessLogsDashboard.Components do
         {@entry.message}
       </td>
       <td style="font-size: 0.8rem;">
-        {format_metadata(@entry.metadata)}
+        <span :if={@trace_id}>
+          <a :if={@trace_link} href={@trace_link} style="color: #2563eb; text-decoration: none; font-family: monospace;" title={"View trace #{@trace_id}"}>
+            trace_id={String.slice(to_string(@trace_id), 0..11)}...
+          </a>
+          <span :if={!@trace_link} style="font-family: monospace;">trace_id={@trace_id}</span>
+          <span :if={@other_meta != %{}}>, </span>
+        </span>
+        {format_metadata(@other_meta)}
       </td>
     </tr>
     """
