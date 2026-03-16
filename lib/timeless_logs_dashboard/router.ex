@@ -34,7 +34,7 @@ defmodule TimelessLogsDashboard.Router do
           additional_pages: [logs: TimelessLogsDashboard.Page]
         ] ++ extra
 
-      live_dashboard path, dashboard_opts
+      live_dashboard(path, dashboard_opts)
     end
   end
 end

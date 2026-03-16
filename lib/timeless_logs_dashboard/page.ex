@@ -32,7 +32,11 @@ defmodule TimelessLogsDashboard.Page do
     assigns = assign(assigns, :nav, Map.get(assigns.page.params, "nav", "search"))
 
     ~H"""
-    <.live_nav_bar id="log-tabs" page={@page} extra_params={["search", "level", "p", "per_page", "since", "until", "trace_id"]}>
+    <.live_nav_bar
+      id="log-tabs"
+      page={@page}
+      extra_params={["search", "level", "p", "per_page", "since", "until", "trace_id"]}
+    >
       <:item name="search" label="Search"><span></span></:item>
       <:item name="stats" label="Stats"><span></span></:item>
       <:item name="tail" label="Live Tail"><span></span></:item>
@@ -73,8 +77,15 @@ defmodule TimelessLogsDashboard.Page do
 
     filters = build_filters(search, level)
     filters = if since != "", do: [{:since, String.to_integer(since)} | filters], else: filters
-    filters = if until_param != "", do: [{:until, String.to_integer(until_param)} | filters], else: filters
-    filters = if trace_id != "", do: [{:metadata, %{"trace_id" => trace_id}} | filters], else: filters
+
+    filters =
+      if until_param != "",
+        do: [{:until, String.to_integer(until_param)} | filters],
+        else: filters
+
+    filters =
+      if trace_id != "", do: [{:metadata, %{"trace_id" => trace_id}} | filters], else: filters
+
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc]
 
     case TimelessLogs.query(query_opts) do

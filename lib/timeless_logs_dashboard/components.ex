@@ -73,7 +73,13 @@ defmodule TimelessLogsDashboard.Components do
               <tr :if={@entries == []}>
                 <td colspan="4" class="text-center text-muted py-4">No log entries found.</td>
               </tr>
-              <.entry_row :for={entry <- @entries} entry={entry} page={@page} socket={@socket} traces_page={@traces_page} />
+              <.entry_row
+                :for={entry <- @entries}
+                entry={entry}
+                page={@page}
+                socket={@socket}
+                traces_page={@traces_page}
+              />
             </tbody>
           </table>
           <.pagination
@@ -106,13 +112,24 @@ defmodule TimelessLogsDashboard.Components do
 
     other_meta =
       meta
-      |> Map.drop(["trace_id", :trace_id, "otel_trace_id", :otel_trace_id,
-                    "span_id", :span_id, "otel_span_id", :otel_span_id])
+      |> Map.drop([
+        "trace_id",
+        :trace_id,
+        "otel_trace_id",
+        :otel_trace_id,
+        "span_id",
+        :span_id,
+        "otel_span_id",
+        :otel_span_id
+      ])
 
     trace_link =
       if trace_id && assigns.traces_page && assigns.socket && assigns.page do
         Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
-          assigns.socket, assigns.traces_page, assigns.page.node, %{},
+          assigns.socket,
+          assigns.traces_page,
+          assigns.page.node,
+          %{},
           %{"nav" => "traces", "trace_id" => to_string(trace_id)}
         )
       end
@@ -134,7 +151,12 @@ defmodule TimelessLogsDashboard.Components do
       </td>
       <td style="font-size: 0.8rem;">
         <span :if={@trace_id}>
-          <a :if={@trace_link} href={@trace_link} style="color: #2563eb; text-decoration: none; font-family: monospace;" title={"View trace #{@trace_id}"}>
+          <a
+            :if={@trace_link}
+            href={@trace_link}
+            style="color: #2563eb; text-decoration: none; font-family: monospace;"
+            title={"View trace #{@trace_id}"}
+          >
             trace_id={String.slice(to_string(@trace_id), 0..11)}...
           </a>
           <span :if={!@trace_link} style="font-family: monospace;">trace_id={@trace_id}</span>
