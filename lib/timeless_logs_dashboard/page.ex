@@ -1,6 +1,6 @@
 defmodule TimelessLogsDashboard.Page do
   @moduledoc false
-  use Phoenix.LiveDashboard.PageBuilder, refresher?: false
+  use Phoenix.LiveDashboard.PageBuilder, refresher?: true
 
   import TimelessLogsDashboard.Components
 
@@ -167,6 +167,20 @@ defmodule TimelessLogsDashboard.Page do
       TimelessLogs.subscribe()
       {:noreply, assign(socket, subscribed: true, tail_entries: [])}
     end
+  end
+
+  @impl true
+  def handle_refresh(socket) do
+    nav = Map.get(socket.assigns.page.params, "nav", "search")
+
+    socket =
+      case nav do
+        "stats" -> apply_nav("stats", %{}, socket)
+        "search" -> apply_nav("search", socket.assigns.page.params, socket)
+        _ -> socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
