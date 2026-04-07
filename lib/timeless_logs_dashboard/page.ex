@@ -38,8 +38,8 @@ defmodule TimelessLogsDashboard.Page do
       page={@page}
       extra_params={["search", "level", "p", "per_page", "since", "until", "trace_id"]}
     >
-      <:item name="search" label="Search"><span></span></:item>
       <:item name="stats" label="Stats"><span></span></:item>
+      <:item name="search" label="Search"><span></span></:item>
       <:item name="tail" label="Live Tail"><span></span></:item>
     </.live_nav_bar>
     <.search_tab
