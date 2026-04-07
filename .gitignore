@@ -23,5 +23,4 @@ erl_crash.dump
 /priv/log_stream/
 
 # Ignore package tarball (built via "mix hex.build").
-log_stream_dashboard-*.tar
-
+timeless_logs_dashboard-*.tar
