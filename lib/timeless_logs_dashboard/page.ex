@@ -17,6 +17,7 @@ defmodule TimelessLogsDashboard.Page do
      assign(socket,
        entries: [],
        total: 0,
+       has_more: false,
        stats: nil,
        tail_entries: [],
        subscribed: false,
@@ -29,7 +30,7 @@ defmodule TimelessLogsDashboard.Page do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :nav, Map.get(assigns.page.params, "nav", "search"))
+    assigns = assign(assigns, :nav, resolve_nav(assigns.page.params))
 
     ~H"""
     <.live_nav_bar
@@ -49,6 +50,7 @@ defmodule TimelessLogsDashboard.Page do
       level={@level}
       current_page={@current_page}
       per_page={@per_page}
+      has_more={@has_more}
       page={@page}
       socket={@socket}
       traces_page={:traces}
@@ -60,7 +62,7 @@ defmodule TimelessLogsDashboard.Page do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    nav = Map.get(params, "nav", "search")
+    nav = resolve_nav(params)
     socket = apply_nav(nav, params, socket)
     {:noreply, socket}
   end
@@ -86,13 +88,14 @@ defmodule TimelessLogsDashboard.Page do
     filters =
       if trace_id != "", do: [{:metadata, %{"trace_id" => trace_id}} | filters], else: filters
 
-    query_opts = filters ++ [limit: per_page, offset: offset, order: :desc]
+    query_opts = filters ++ [limit: per_page, offset: offset, order: :desc, count_total: false]
 
     case TimelessLogs.query(query_opts) do
-      {:ok, %TimelessLogs.Result{entries: entries, total: total}} ->
+      {:ok, %TimelessLogs.Result{entries: entries, total: total, has_more: has_more}} ->
         assign(socket,
           entries: entries,
           total: total,
+          has_more: has_more,
           search: search,
           level: level,
           per_page: per_page,
@@ -103,6 +106,7 @@ defmodule TimelessLogsDashboard.Page do
         assign(socket,
           entries: [],
           total: 0,
+          has_more: false,
           search: search,
           level: level,
           per_page: per_page,
@@ -128,6 +132,13 @@ defmodule TimelessLogsDashboard.Page do
   end
 
   defp apply_nav(_, _params, socket), do: socket
+
+  defp resolve_nav(params) do
+    case Map.get(params, "nav") do
+      nav when nav in ["search", "stats", "tail"] -> nav
+      _ -> "stats"
+    end
+  end
 
   defp build_filters(search, level) do
     filters = []
@@ -176,7 +187,6 @@ defmodule TimelessLogsDashboard.Page do
     socket =
       case nav do
         "stats" -> apply_nav("stats", %{}, socket)
-        "search" -> apply_nav("search", socket.assigns.page.params, socket)
         _ -> socket
       end
 
