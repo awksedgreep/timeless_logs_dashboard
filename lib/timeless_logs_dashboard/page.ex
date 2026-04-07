@@ -91,7 +91,11 @@ defmodule TimelessLogsDashboard.Page do
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc, count_total: false]
 
     case TimelessLogs.query(query_opts) do
-      {:ok, %TimelessLogs.Result{entries: entries, total: total, has_more: has_more}} ->
+      {:ok, %TimelessLogs.Result{} = result} ->
+        entries = result.entries
+        total = result.total
+        has_more = Map.get(result, :has_more, false)
+
         assign(socket,
           entries: entries,
           total: total,
