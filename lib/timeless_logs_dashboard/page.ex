@@ -68,7 +68,9 @@ defmodule TimelessLogsDashboard.Page do
       socket = apply_nav(nav, params, socket)
       {:noreply, socket}
     else
-      to = live_dashboard_path(socket, socket.assigns.page, normalize_dashboard_params(params, nav))
+      to =
+        live_dashboard_path(socket, socket.assigns.page, normalize_dashboard_params(params, nav))
+
       {:noreply, push_patch(socket, to: to)}
     end
   end
