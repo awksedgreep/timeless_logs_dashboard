@@ -406,11 +406,19 @@ defmodule TimelessLogsDashboard.Components do
   defp format_timestamp(nil), do: "-"
 
   defp format_timestamp(ts) when is_integer(ts) do
-    case DateTime.from_unix(ts) do
+    # timeless_logs >= 1.5 uses canonical microseconds; older versions
+    # mixed seconds (logger handler) and microseconds (jsonline). Detect
+    # the unit by magnitude so both display correctly.
+    case DateTime.from_unix(ts, timestamp_unit(ts)) do
       {:ok, dt} -> Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
       _ -> to_string(ts)
     end
   end
+
+  defp timestamp_unit(ts) when ts >= 100_000_000_000_000_000, do: :nanosecond
+  defp timestamp_unit(ts) when ts >= 100_000_000_000_000, do: :microsecond
+  defp timestamp_unit(ts) when ts >= 100_000_000_000, do: :millisecond
+  defp timestamp_unit(_ts), do: :second
 
   defp format_timestamp(%DateTime{} = dt) do
     Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
