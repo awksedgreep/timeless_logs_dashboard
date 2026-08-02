@@ -275,7 +275,11 @@ defmodule TimelessLogsDashboard.Components do
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Storage Mode</h6>
             <h4 class="mb-0">
-              <span class="badge bg-info">{TimelessLogs.Config.storage()}</span>
+              <span class="badge bg-info">{Map.get(
+                @stats,
+                :storage_mode,
+                TimelessLogs.Config.storage()
+              )}</span>
             </h4>
           </div>
         </div>
@@ -353,10 +357,12 @@ defmodule TimelessLogsDashboard.Components do
 
   attr(:entries, :list, required: true)
   attr(:subscribed, :boolean, required: true)
+  attr(:error, :string, default: nil)
 
   def tail_tab(assigns) do
     ~H"""
     <div class="mb-4">
+      <div :if={@error} class="alert alert-warning" role="alert">{@error}</div>
       <div class="d-flex align-items-center mb-3" style="gap: 0.75rem;">
         <button
           phx-click="toggle_tail"
@@ -415,16 +421,16 @@ defmodule TimelessLogsDashboard.Components do
     end
   end
 
-  defp timestamp_unit(ts) when ts >= 100_000_000_000_000_000, do: :nanosecond
-  defp timestamp_unit(ts) when ts >= 100_000_000_000_000, do: :microsecond
-  defp timestamp_unit(ts) when ts >= 100_000_000_000, do: :millisecond
-  defp timestamp_unit(_ts), do: :second
-
   defp format_timestamp(%DateTime{} = dt) do
     Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S")
   end
 
   defp format_timestamp(other), do: to_string(other)
+
+  defp timestamp_unit(ts) when ts >= 100_000_000_000_000_000, do: :nanosecond
+  defp timestamp_unit(ts) when ts >= 100_000_000_000_000, do: :microsecond
+  defp timestamp_unit(ts) when ts >= 100_000_000_000, do: :millisecond
+  defp timestamp_unit(_ts), do: :second
 
   defp format_metadata(nil), do: ""
   defp format_metadata(meta) when meta == %{}, do: ""

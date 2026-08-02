@@ -4,6 +4,8 @@ defmodule TimelessLogsDashboard.Page do
 
   import TimelessLogsDashboard.Components
 
+  alias TimelessLogsDashboard.HistoricalSource
+
   @tail_cap 200
 
   @impl true
@@ -21,6 +23,7 @@ defmodule TimelessLogsDashboard.Page do
        stats: nil,
        tail_entries: [],
        subscribed: false,
+       tail_error: nil,
        search: "",
        level: "",
        per_page: 25,
@@ -56,7 +59,12 @@ defmodule TimelessLogsDashboard.Page do
       traces_page={:traces}
     />
     <.stats_tab :if={@nav == "stats"} stats={@stats} />
-    <.tail_tab :if={@nav == "tail"} entries={@tail_entries} subscribed={@subscribed} />
+    <.tail_tab
+      :if={@nav == "tail"}
+      entries={@tail_entries}
+      subscribed={@subscribed}
+      error={@tail_error}
+    />
     """
   end
 
@@ -98,10 +106,9 @@ defmodule TimelessLogsDashboard.Page do
 
     query_opts = filters ++ [limit: per_page, offset: offset, order: :desc, count_total: false]
 
-    case TimelessLogs.query(query_opts) do
-      {:ok, %TimelessLogs.Result{} = result} ->
-        entries = result.entries
-        total = result.total
+    case HistoricalSource.query(query_opts) do
+      {:ok, %{entries: entries} = result} ->
+        total = Map.get(result, :total, length(entries))
         has_more = Map.get(result, :has_more, false)
 
         assign(socket,
@@ -128,7 +135,7 @@ defmodule TimelessLogsDashboard.Page do
   end
 
   defp apply_nav("stats", _params, socket) do
-    case TimelessLogs.stats() do
+    case HistoricalSource.stats() do
       {:ok, stats} -> assign(socket, :stats, stats)
       _ -> socket
     end
@@ -136,8 +143,10 @@ defmodule TimelessLogsDashboard.Page do
 
   defp apply_nav("tail", _params, socket) do
     if connected?(socket) and not socket.assigns.subscribed do
-      TimelessLogs.subscribe()
-      assign(socket, subscribed: true, tail_entries: [])
+      case HistoricalSource.subscribe() do
+        :ok -> assign(socket, subscribed: true, tail_entries: [], tail_error: nil)
+        {:error, reason} -> assign(socket, subscribed: false, tail_error: inspect(reason))
+      end
     else
       socket
     end
@@ -201,11 +210,15 @@ defmodule TimelessLogsDashboard.Page do
 
   def handle_event("toggle_tail", _, socket) do
     if socket.assigns.subscribed do
-      TimelessLogs.unsubscribe()
-      {:noreply, assign(socket, subscribed: false)}
+      case HistoricalSource.unsubscribe() do
+        :ok -> {:noreply, assign(socket, subscribed: false, tail_error: nil)}
+        {:error, reason} -> {:noreply, assign(socket, tail_error: inspect(reason))}
+      end
     else
-      TimelessLogs.subscribe()
-      {:noreply, assign(socket, subscribed: true, tail_entries: [])}
+      case HistoricalSource.subscribe() do
+        :ok -> {:noreply, assign(socket, subscribed: true, tail_entries: [], tail_error: nil)}
+        {:error, reason} -> {:noreply, assign(socket, tail_error: inspect(reason))}
+      end
     end
   end
 
