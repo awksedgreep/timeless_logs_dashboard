@@ -40,11 +40,27 @@ defmodule TimelessLogsDashboard.HistoricalSource.Local do
   @impl true
   def stats(_opts), do: TimelessLogs.stats()
 
+  # TimelessLogs.subscribe/0 delegates straight to Registry.register/3, which
+  # answers {:ok, pid} — never a bare :ok. Returning that unchanged breaks the
+  # `:ok | {:error, term()}` contract this module declares, and callers that
+  # match the contract crash with a CaseClauseError on the success path.
+  #
+  # Already being registered also means the caller will receive entries, so it
+  # is success rather than an error.
   @impl true
-  def subscribe(_opts), do: TimelessLogs.subscribe()
+  def subscribe(_opts) do
+    case TimelessLogs.subscribe() do
+      {:ok, _pid} -> :ok
+      {:error, {:already_registered, _pid}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
+  # Registry.unregister/2 always answers :ok, so there is no failure to map.
   @impl true
-  def unsubscribe(_opts), do: TimelessLogs.unsubscribe()
+  def unsubscribe(_opts) do
+    TimelessLogs.unsubscribe()
+  end
 end
 
 defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do

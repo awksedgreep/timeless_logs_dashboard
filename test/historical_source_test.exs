@@ -26,6 +26,39 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
     assert {:error, {:unsupported_capability, :logs_live_tail}} = HistoricalSource.unsubscribe()
   end
 
+  describe "local source honours the subscribe/unsubscribe contract" do
+    # TimelessLogs.subscribe/0 delegates to Registry.register/3, which answers
+    # {:ok, pid}. Leaking that shape broke live tail: the dashboard matches the
+    # declared :ok | {:error, term()} contract and crashed with a
+    # CaseClauseError on the success path, so the LiveView died on mount and
+    # the page simply hung.
+    setup do
+      Application.put_env(
+        :timeless_logs_dashboard,
+        :historical_source,
+        HistoricalSource.Local
+      )
+
+      {:ok, _} = Application.ensure_all_started(:timeless_logs)
+      on_exit(fn -> TimelessLogs.unsubscribe() end)
+      :ok
+    end
+
+    test "subscribe returns :ok, not Registry's {:ok, pid}" do
+      assert :ok = HistoricalSource.subscribe()
+    end
+
+    test "subscribing twice is still :ok" do
+      assert :ok = HistoricalSource.subscribe()
+      assert :ok = HistoricalSource.subscribe()
+    end
+
+    test "unsubscribe returns :ok" do
+      assert :ok = HistoricalSource.subscribe()
+      assert :ok = HistoricalSource.unsubscribe()
+    end
+  end
+
   test "selected data-plane source fails closed when client is absent" do
     Application.put_env(
       :timeless_logs_dashboard,
