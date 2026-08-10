@@ -8,6 +8,11 @@ defmodule TimelessLogsDashboard.Page do
 
   @tail_cap 200
 
+  # Ranges offered by the search form. "all" removes the bound entirely and is
+  # the slow path, so it is opt-in rather than the default.
+  @windows %{"1h" => 3_600, "24h" => 86_400, "7d" => 604_800, "30d" => 2_592_000}
+  @default_window "24h"
+
   @impl true
   def menu_link(_, _) do
     {:ok, "TimelessLogs"}
@@ -26,6 +31,7 @@ defmodule TimelessLogsDashboard.Page do
        tail_error: nil,
        search: "",
        level: "",
+       window: @default_window,
        per_page: 25,
        current_page: 1
      )}
@@ -33,13 +39,25 @@ defmodule TimelessLogsDashboard.Page do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :nav, resolve_nav(assigns.page.params))
+    assigns =
+      assigns
+      |> assign(:nav, resolve_nav(assigns.page.params))
+      |> assign(:windows, window_options())
 
     ~H"""
     <.live_nav_bar
       id="log-tabs"
       page={@page}
-      extra_params={["search", "level", "p", "per_page", "since", "until", "trace_id"]}
+      extra_params={[
+        "search",
+        "level",
+        "window",
+        "p",
+        "per_page",
+        "since",
+        "until",
+        "trace_id"
+      ]}
     >
       <:item name="stats" label="Stats"><span></span></:item>
       <:item name="search" label="Search"><span></span></:item>
@@ -51,6 +69,8 @@ defmodule TimelessLogsDashboard.Page do
       total={@total}
       search={@search}
       level={@level}
+      window={@window}
+      windows={@windows}
       current_page={@current_page}
       per_page={@per_page}
       has_more={@has_more}
@@ -86,7 +106,8 @@ defmodule TimelessLogsDashboard.Page do
   defp apply_nav("search", params, socket) do
     search = Map.get(params, "search", "")
     level = Map.get(params, "level", "")
-    since = Map.get(params, "since", "")
+    window = Map.get(params, "window", @default_window)
+    since = params |> Map.get("since", "") |> default_since(window)
     until_param = Map.get(params, "until", "")
     trace_id = Map.get(params, "trace_id", "")
     per_page = params |> Map.get("per_page", "25") |> String.to_integer() |> max(1) |> min(100)
@@ -117,6 +138,7 @@ defmodule TimelessLogsDashboard.Page do
           has_more: has_more,
           search: search,
           level: level,
+          window: window,
           per_page: per_page,
           current_page: current_page
         )
@@ -128,6 +150,7 @@ defmodule TimelessLogsDashboard.Page do
           has_more: false,
           search: search,
           level: level,
+          window: window,
           per_page: per_page,
           current_page: current_page
         )
@@ -171,6 +194,44 @@ defmodule TimelessLogsDashboard.Page do
     filters
   end
 
+  # A message search has no pushdown in the libSQL engine: the store returns
+  # rows and the shared Filter applies the term, because :message also matches
+  # metadata values and the engine can only match the message. Left unbounded
+  # that decodes the whole store — measured at roughly 0.8s per 200k entries,
+  # so several seconds against a real one, on every submit.
+  #
+  # A timestamp bound does push down, so the default range keeps the common
+  # case cheap. It is a visible control rather than a hidden cap: "All time"
+  # is still available, and a silent window would make older entries look
+  # missing.
+  @doc false
+  def window_options,
+    do: [
+      {"1h", "Last hour"},
+      {"24h", "Last 24 hours"},
+      {"7d", "Last 7 days"},
+      {"30d", "Last 30 days"},
+      {"all", "All time"}
+    ]
+
+  defp default_since("", window), do: window_start(window)
+  defp default_since(since, _window), do: since
+
+  defp window_start("all"), do: ""
+
+  defp window_start(window) do
+    case Map.fetch(@windows, window) do
+      {:ok, seconds} ->
+        DateTime.utc_now()
+        |> DateTime.add(-seconds, :second)
+        |> DateTime.to_unix(:microsecond)
+        |> Integer.to_string()
+
+      :error ->
+        window_start(@default_window)
+    end
+  end
+
   defp normalize_dashboard_params(params, nav) do
     params
     |> Enum.map(fn
@@ -178,6 +239,7 @@ defmodule TimelessLogsDashboard.Page do
       {"level", value} -> {:level, value}
       {"p", value} -> {:p, value}
       {"per_page", value} -> {:per_page, value}
+      {"window", value} -> {:window, value}
       {"since", value} -> {:since, value}
       {"until", value} -> {:until, value}
       {"trace_id", value} -> {:trace_id, value}
@@ -189,11 +251,12 @@ defmodule TimelessLogsDashboard.Page do
   end
 
   @impl true
-  def handle_event("search", %{"search" => search, "level" => level}, socket) do
+  def handle_event("search", %{"search" => search, "level" => level} = form, socket) do
     params = %{
       nav: "search",
       search: search,
       level: level,
+      window: Map.get(form, "window", @default_window),
       p: "1",
       per_page: to_string(socket.assigns.per_page)
     }
@@ -203,7 +266,7 @@ defmodule TimelessLogsDashboard.Page do
   end
 
   def handle_event("clear", _, socket) do
-    params = %{nav: "search", search: "", level: "", p: "1"}
+    params = %{nav: "search", search: "", level: "", window: @default_window, p: "1"}
     to = live_dashboard_path(socket, socket.assigns.page, params)
     {:noreply, push_patch(socket, to: to)}
   end

@@ -8,6 +8,8 @@ defmodule TimelessLogsDashboard.Components do
   attr(:total, :integer, required: true)
   attr(:search, :string, required: true)
   attr(:level, :string, required: true)
+  attr(:window, :string, required: true)
+  attr(:windows, :list, required: true)
   attr(:current_page, :integer, required: true)
   attr(:per_page, :integer, required: true)
   attr(:has_more, :boolean, required: true)
@@ -43,6 +45,14 @@ defmodule TimelessLogsDashboard.Components do
               </option>
             </select>
           </div>
+          <div>
+            <label class="form-label mb-1"><small>Range</small></label>
+            <select name="window" class="form-select form-select-sm" style="min-width: 140px;">
+              <option :for={{value, label} <- @windows} value={value} selected={@window == value}>
+                {label}
+              </option>
+            </select>
+          </div>
           <button type="submit" class="btn btn-primary btn-sm">Search</button>
         </form>
         <button phx-click="clear" class="btn btn-outline-secondary btn-sm">
@@ -54,7 +64,10 @@ defmodule TimelessLogsDashboard.Components do
         <div class="card-body p-0">
           <div class="d-flex justify-content-between align-items-center px-3 py-2">
             <small class="text-muted">
-              Showing {length(@entries)} {if length(@entries) == 1, do: "entry", else: "entries"}
+              Showing {length(@entries)} {if length(@entries) == 1, do: "entry", else: "entries"} of {@total} in {window_label(
+                @windows,
+                @window
+              )}
             </small>
             <small class="text-muted">
               Page {@current_page}
@@ -86,6 +99,7 @@ defmodule TimelessLogsDashboard.Components do
             :if={@current_page > 1 or @has_more}
             current_page={@current_page}
             has_more={@has_more}
+            window={@window}
             page={@page}
             socket={@socket}
             search={@search}
@@ -195,6 +209,7 @@ defmodule TimelessLogsDashboard.Components do
   attr(:socket, :any, required: true)
   attr(:search, :string, required: true)
   attr(:level, :string, required: true)
+  attr(:window, :string, required: true)
   attr(:per_page, :integer, required: true)
 
   defp pagination(assigns) do
@@ -210,7 +225,7 @@ defmodule TimelessLogsDashboard.Components do
           <span :if={@current_page <= 1} class="page-link">Prev</span>
           <.link
             :if={@current_page > 1}
-            patch={page_path(@socket, @page, @prev_page, @search, @level, @per_page)}
+            patch={page_path(@socket, @page, @prev_page, @search, @level, @window, @per_page)}
             class="page-link"
           >
             Prev
@@ -223,7 +238,7 @@ defmodule TimelessLogsDashboard.Components do
           <span :if={not @has_more} class="page-link">Next</span>
           <.link
             :if={@has_more}
-            patch={page_path(@socket, @page, @next_page, @search, @level, @per_page)}
+            patch={page_path(@socket, @page, @next_page, @search, @level, @window, @per_page)}
             class="page-link"
           >
             Next
@@ -234,14 +249,33 @@ defmodule TimelessLogsDashboard.Components do
     """
   end
 
-  defp page_path(socket, page, page_num, search, level, per_page) do
-    Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(socket, page, %{
+  # The range has to travel with the page number. Without it, paging falls back
+  # to the default window, so a search over "All time" or "Last 7 days" would
+  # silently return 24-hour results from page two onward — with a different
+  # total than the one that produced the pager.
+  defp page_path(socket, page, page_num, search, level, window, per_page) do
+    Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
+      socket,
+      page,
+      page_params(page_num, search, level, window, per_page)
+    )
+  end
+
+  @doc false
+  # Split out from page_path/7 so it can be asserted without a router. The
+  # range has to travel with the page number: without it, paging falls back to
+  # the default window, so a search over "All time" or "Last 7 days" would
+  # silently return 24-hour results from page two onward — with a total that no
+  # longer matches the pager that produced it.
+  def page_params(page_num, search, level, window, per_page) do
+    %{
       nav: "search",
       search: search,
       level: level,
+      window: window,
       p: to_string(page_num),
       per_page: to_string(per_page)
-    })
+    }
   end
 
   # --- Stats tab ---
@@ -451,5 +485,11 @@ defmodule TimelessLogsDashboard.Components do
       bytes >= 1024 -> "#{Float.round(bytes / 1024, 1)} KB"
       true -> "#{bytes} B"
     end
+  end
+
+  defp window_label(windows, window) do
+    Enum.find_value(windows, window, fn {value, label} ->
+      if value == window, do: String.downcase(label)
+    end)
   end
 end
