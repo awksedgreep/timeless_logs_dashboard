@@ -84,6 +84,9 @@ defmodule TimelessLogsDashboard.Page do
       entries={@tail_entries}
       subscribed={@subscribed}
       error={@tail_error}
+      page={@page}
+      socket={@socket}
+      traces_page={:traces}
     />
     """
   end

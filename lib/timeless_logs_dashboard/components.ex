@@ -392,6 +392,9 @@ defmodule TimelessLogsDashboard.Components do
   attr(:entries, :list, required: true)
   attr(:subscribed, :boolean, required: true)
   attr(:error, :string, default: nil)
+  attr(:page, :any, default: nil)
+  attr(:socket, :any, default: nil)
+  attr(:traces_page, :atom, default: nil)
 
   def tail_tab(assigns) do
     ~H"""
@@ -432,7 +435,13 @@ defmodule TimelessLogsDashboard.Components do
                     else: "Click Start to begin streaming."}
                 </td>
               </tr>
-              <.entry_row :for={entry <- @entries} entry={entry} />
+              <.entry_row
+                :for={entry <- @entries}
+                entry={entry}
+                page={@page}
+                socket={@socket}
+                traces_page={@traces_page}
+              />
             </tbody>
           </table>
         </div>
