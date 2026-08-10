@@ -144,6 +144,19 @@ defmodule TimelessLogsDashboard.SearchWindowTest do
     end
   end
 
+  test "the ranges match the traces plugin" do
+    # The two dashboards are separate packages with no shared dependency, so
+    # uniformity cannot be asserted by comparing them directly. Pinning the
+    # list in both means whichever one drifts fails its own suite.
+    assert Page.window_options() == [
+             {"1h", "Last hour"},
+             {"24h", "Last 24 hours"},
+             {"7d", "Last 7 days"},
+             {"30d", "Last 30 days"},
+             {"all", "All time"}
+           ]
+  end
+
   test "pagination survives the window: page 2 keeps the bound and shifts the offset" do
     filters = search(%{"search" => "boom", "p" => "2", "per_page" => "25"})
 
