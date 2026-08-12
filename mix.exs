@@ -1,7 +1,7 @@
 defmodule TimelessLogsDashboard.MixProject do
   use Mix.Project
 
-  @version "0.7.18"
+  @version "0.7.19"
   @source_url "https://github.com/awksedgreep/timeless_logs_dashboard"
 
   def project do
@@ -27,7 +27,7 @@ defmodule TimelessLogsDashboard.MixProject do
 
   defp deps do
     [
-      {:timeless_logs, "~> 1.10"},
+      {:timeless_logs, "~> 1.11"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_view, "~> 1.0"},
       {:jason, "~> 1.4"},

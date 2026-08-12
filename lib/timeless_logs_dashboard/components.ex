@@ -309,11 +309,7 @@ defmodule TimelessLogsDashboard.Components do
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Storage Mode</h6>
             <h4 class="mb-0">
-              <span class="badge bg-info">{Map.get(
-                @stats,
-                :storage_mode,
-                TimelessLogs.Config.storage()
-              )}</span>
+              <span class="badge bg-info">{@stats.storage_mode}</span>
             </h4>
           </div>
         </div>
@@ -351,14 +347,7 @@ defmodule TimelessLogsDashboard.Components do
           <div class="card-body text-center">
             <h6 class="card-subtitle text-muted mb-1">Data Compression</h6>
             <h4 class="mb-0">
-              {if Map.get(@stats, :compression_raw_bytes_in, 0) > 0 and
-                    Map.get(@stats, :compression_compressed_bytes_out, 0) > 0 do
-                ratio = @stats.compression_raw_bytes_in / @stats.compression_compressed_bytes_out
-                pct = Float.round((1 - 1 / ratio) * 100, 1)
-                "#{Float.round(ratio, 1)}x (#{pct}%)"
-              else
-                if Map.get(@stats, :compaction_count, 0) > 0, do: "1.0x (0%)", else: "pending"
-              end}
+              {format_compression_ratio(@stats)}
             </h4>
           </div>
         </div>
@@ -482,6 +471,29 @@ defmodule TimelessLogsDashboard.Components do
     meta
     |> Enum.reject(fn {_k, v} -> v == "" or is_nil(v) end)
     |> Enum.map_join(", ", fn {k, v} -> "#{k}=#{v}" end)
+  end
+
+  # Backed by the compression totals the extension persists in the store's
+  # _meta (0.6.2) — durable across restarts, unlike the process-local
+  # optimize profile counters that once fed this tile (which then showed
+  # "pending" on fully compressed stores after every restart). "pending"
+  # now strictly means raw blocks exist and none are compressed yet.
+  defp format_compression_ratio(stats) do
+    bytes_in = Map.get(stats, :compression_raw_bytes_in, 0)
+    bytes_out = Map.get(stats, :compression_compressed_bytes_out, 0)
+
+    cond do
+      bytes_in > 0 and bytes_out > 0 ->
+        ratio = bytes_in / bytes_out
+        pct = Float.round((1 - 1 / ratio) * 100, 1)
+        "#{Float.round(ratio, 1)}x (#{pct}% smaller)"
+
+      Map.get(stats, :raw_blocks, 0) > 0 and Map.get(stats, :compressed_blocks, 0) == 0 ->
+        "pending"
+
+      true ->
+        "—"
+    end
   end
 
   defp format_bytes(nil), do: "-"
