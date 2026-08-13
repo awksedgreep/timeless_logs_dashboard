@@ -85,11 +85,45 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
     end
   end
 
+  # Live tail over the data plane: the client streams
+  # /select/logsql/tail and delivers {:timeless_logs, :entry, entry} to the
+  # calling process — the same messages the embedded Registry tail sends, so
+  # the page cannot tell the sources apart. subscribe/unsubscribe both run
+  # in the page's own process (the page calls them directly), so the
+  # streaming task's pid lives in that process's dictionary; killing it
+  # closes the connection, which unsubscribes server-side.
   @impl true
-  def subscribe(_opts), do: {:error, {:unsupported_capability, :logs_live_tail}}
+  def subscribe(opts) do
+    with {:ok, client} <- Keyword.fetch(opts, :client) do
+      cond do
+        not function_exported?(client, :tail, 3) ->
+          {:error, {:unsupported_capability, :logs_live_tail}}
+
+        Process.get({__MODULE__, :tail_task}) != nil ->
+          :ok
+
+        true ->
+          case client.tail("*", self(), Keyword.get(opts, :client_opts, [])) do
+            {:ok, task} ->
+              Process.put({__MODULE__, :tail_task}, task)
+              :ok
+
+            {:error, _reason} = error ->
+              error
+          end
+      end
+    else
+      :error -> {:error, :missing_data_plane_client}
+    end
+  end
 
   @impl true
-  def unsubscribe(_opts), do: {:error, {:unsupported_capability, :logs_live_tail}}
+  def unsubscribe(_opts) do
+    case Process.delete({__MODULE__, :tail_task}) do
+      nil -> :ok
+      pid -> Process.exit(pid, :kill) && :ok
+    end
+  end
 
   defp invoke(opts, function, args) do
     with {:ok, client} <- Keyword.fetch(opts, :client) do

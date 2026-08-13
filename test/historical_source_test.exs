@@ -22,8 +22,43 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
 
     assert {:ok, %{entries: [%{message: "kept"}]}} = HistoricalSource.query(level: :info)
     assert {:ok, %{total_entries: 7, storage_mode: :libsql}} = HistoricalSource.stats()
+    # This fixture client has no tail/3: subscribe reports the missing
+    # capability; unsubscribe of a never-started tail is a clean no-op.
     assert {:error, {:unsupported_capability, :logs_live_tail}} = HistoricalSource.subscribe()
-    assert {:error, {:unsupported_capability, :logs_live_tail}} = HistoricalSource.unsubscribe()
+    assert :ok = HistoricalSource.unsubscribe()
+  end
+
+  test "data-plane source streams live tail through a tail-capable client" do
+    Application.put_env(
+      :timeless_logs_dashboard,
+      :historical_source,
+      {HistoricalSource.DataPlane, client: __MODULE__.TailClient}
+    )
+
+    assert :ok = HistoricalSource.subscribe()
+    # Idempotent while a tail is live, and the entry arrives in the same
+    # message shape the embedded Registry tail sends.
+    assert :ok = HistoricalSource.subscribe()
+    assert_receive {:timeless_logs, :entry, %{message: "streamed"}}, 1_000
+    assert :ok = HistoricalSource.unsubscribe()
+    assert :ok = HistoricalSource.unsubscribe()
+  end
+
+  defmodule TailClient do
+    def tail("*", subscriber, _opts) do
+      {:ok, pid} =
+        Task.start(fn ->
+          send(
+            subscriber,
+            {:timeless_logs, :entry,
+             %{timestamp: DateTime.utc_now(), level: "info", message: "streamed", metadata: %{}}}
+          )
+
+          Process.sleep(:infinity)
+        end)
+
+      {:ok, pid}
+    end
   end
 
   describe "local source honours the subscribe/unsubscribe contract" do
