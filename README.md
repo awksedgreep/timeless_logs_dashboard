@@ -25,8 +25,9 @@ Provides three tabs:
 - **Search** -- query logs with level, message, and metadata filters, a
   visible time-range control, and pagination
 - **Stats** -- entries, total size, storage mode and engine, raw and
-  compressed blocks, durable compression ratio with storage efficiency, and
-  oldest/newest timestamps
+  compressed blocks, durable compression ratio (raw ingested bytes vs
+  stored data-block bytes; codec input/output on older servers) with
+  storage efficiency, and oldest/newest timestamps
 - **Live Tail** -- real-time streaming of new log entries; trace ids in
   entries link through to the traces dashboard
 

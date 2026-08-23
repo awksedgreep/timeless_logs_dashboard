@@ -21,7 +21,10 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
     )
 
     assert {:ok, %{entries: [%{message: "kept"}]}} = HistoricalSource.query(level: :info)
-    assert {:ok, %{total_entries: 7, storage_mode: :libsql}} = HistoricalSource.stats()
+
+    assert {:ok, %{total_entries: 7, storage_mode: :libsql, raw_ingested_bytes_total: 4_096}} =
+             HistoricalSource.stats()
+
     # This fixture client has no tail/3: subscribe reports the missing
     # capability; unsubscribe of a never-started tail is a clean no-op.
     assert {:error, {:unsupported_capability, :logs_live_tail}} = HistoricalSource.subscribe()
@@ -117,7 +120,8 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
          "compressed_blocks" => 2,
          "compressed_bytes" => 100,
          "raw_blocks" => 1,
-         "raw_bytes" => 10
+         "raw_bytes" => 10,
+         "raw_ingested_bytes_total" => 4_096
        }}
     end
   end

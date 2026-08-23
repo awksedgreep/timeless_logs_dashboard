@@ -474,14 +474,9 @@ defmodule TimelessLogsDashboard.Components do
     |> Enum.map_join(", ", fn {k, v} -> "#{k}=#{v}" end)
   end
 
-  # Backed by the compression totals the extension persists in the store's
-  # _meta (0.6.2) — durable across restarts, unlike the process-local
-  # optimize profile counters that once fed this tile (which then showed
-  # "pending" on fully compressed stores after every restart). "pending"
-  # now strictly means raw blocks exist and none are compressed yet.
   # The durable headline: what the user's data actually costs on disk.
-  # Unlike the ratio (which only counts optimize passes since extension
-  # 0.6.2 and converges over the retention window), this is exact from the
+  # `total_bytes` is the engine's data-block payload (bytes_on_disk) — no
+  # index, WAL, freelist, or file overhead — so this is exact from the
   # first stats call.
   defp format_storage_efficiency(stats) do
     n = Map.get(stats, :total_entries, 0)
@@ -498,15 +493,33 @@ defmodule TimelessLogsDashboard.Components do
   defp format_number(n) when n >= 1_000, do: "#{Float.round(n / 1_000, 1)}k"
   defp format_number(n), do: to_string(n)
 
+  # Headline ratio, preferred source first:
+  #
+  # - `raw_ingested_bytes_total` / `total_bytes` — the engine's persisted
+  #   logical-row-bytes counter (ts + level + message + metadata, counted
+  #   once when entries become durable; monotonic under optimize/prune,
+  #   restart-safe) over the engine's data-block payload on disk
+  #   (bytes_on_disk). This is "raw ingested vs stored": index, WAL,
+  #   freelist, and file bytes never appear inside the ratio.
+  # - Fallback for older servers or pre-upgrade databases (the counter
+  #   reads 0 there): the codec's persisted compression input/output
+  #   totals (_meta since extension 0.6.2) — pre-codec columnar block
+  #   bytes in vs compressed block bytes out, which only counts optimize
+  #   passes and so converges over the retention window.
+  #
+  # "pending" strictly means raw blocks exist and none are compressed yet.
   defp format_compression_ratio(stats) do
+    raw_ingested = Map.get(stats, :raw_ingested_bytes_total, 0)
+    stored = Map.get(stats, :total_bytes, 0)
     bytes_in = Map.get(stats, :compression_raw_bytes_in, 0)
     bytes_out = Map.get(stats, :compression_compressed_bytes_out, 0)
 
     cond do
+      raw_ingested > 0 and stored > 0 ->
+        ratio_label(raw_ingested, stored)
+
       bytes_in > 0 and bytes_out > 0 ->
-        ratio = bytes_in / bytes_out
-        pct = Float.round((1 - 1 / ratio) * 100, 1)
-        "#{Float.round(ratio, 1)}x (#{pct}% smaller)"
+        ratio_label(bytes_in, bytes_out)
 
       Map.get(stats, :raw_blocks, 0) > 0 and Map.get(stats, :compressed_blocks, 0) == 0 ->
         "pending"
@@ -514,6 +527,12 @@ defmodule TimelessLogsDashboard.Components do
       true ->
         "—"
     end
+  end
+
+  defp ratio_label(raw_bytes, stored_bytes) do
+    ratio = raw_bytes / stored_bytes
+    pct = Float.round((1 - 1 / ratio) * 100, 1)
+    "#{Float.round(ratio, 1)}x (#{pct}% smaller)"
   end
 
   defp format_bytes(nil), do: "-"

@@ -167,6 +167,7 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
       compressed_bytes: value(stats, :compressed_bytes, 0),
       compression_raw_bytes_in: value(stats, :compression_input_bytes_total, 0),
       compression_compressed_bytes_out: value(stats, :compression_output_bytes_total, 0),
+      raw_ingested_bytes_total: value(stats, :raw_ingested_bytes_total, 0),
       compaction_count: value(stats, :optimize_count, 0),
       oldest_timestamp: value(stats, :oldest_timestamp, nil),
       newest_timestamp: value(stats, :newest_timestamp, nil),
