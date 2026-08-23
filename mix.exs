@@ -1,7 +1,7 @@
 defmodule TimelessLogsDashboard.MixProject do
   use Mix.Project
 
-  @version "0.7.23"
+  @version "0.7.24"
   @source_url "https://github.com/awksedgreep/timeless_logs_dashboard"
 
   def project do
