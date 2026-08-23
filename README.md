@@ -22,9 +22,13 @@ Phoenix [LiveDashboard](https://github.com/phoenixframework/phoenix_live_dashboa
 
 Provides three tabs:
 
-- **Search** -- query logs with level, message, and metadata filters + pagination
-- **Stats** -- aggregate metrics (blocks, entries, compressed size, index size, timestamps)
-- **Live Tail** -- real-time streaming of new log entries
+- **Search** -- query logs with level, message, and metadata filters, a
+  visible time-range control, and pagination
+- **Stats** -- entries, total size, storage mode and engine, raw and
+  compressed blocks, durable compression ratio with storage efficiency, and
+  oldest/newest timestamps
+- **Live Tail** -- real-time streaming of new log entries; trace ids in
+  entries link through to the traces dashboard
 
 ## Installation
 
@@ -53,7 +57,7 @@ Add `timeless_logs_dashboard` to your dependencies:
 ```elixir
 def deps do
   [
-    {:timeless_logs_dashboard, "~> 0.6.0"}
+    {:timeless_logs_dashboard, "~> 0.7"}
   ]
 end
 ```
@@ -86,6 +90,23 @@ live_dashboard "/dashboard",
 ```
 
 Navigate to `/dashboard/logs` in your browser.
+
+## Reading from the Rust data plane
+
+By default the dashboard reads the embedded TimelessLogs store. It can
+instead delegate reads to a Rust logs data plane through a configured HTTP
+client (such as the release Stack adapter):
+
+```elixir
+config :timeless_logs_dashboard,
+  historical_source:
+    {TimelessLogsDashboard.HistoricalSource.DataPlane, client: MyStack.LogsClient}
+```
+
+The client must implement `query/1` and `stats/0`. Live tail also works over
+the data plane when the client additionally exports `tail/3` (streaming
+`/select/logsql/tail`); with a tail-less client, the Live Tail tab fails
+explicitly instead of silently consulting the embedded store.
 
 ## Requirements
 

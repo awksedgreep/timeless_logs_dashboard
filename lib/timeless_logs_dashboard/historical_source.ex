@@ -3,8 +3,9 @@ defmodule TimelessLogsDashboard.HistoricalSource do
   Configurable owner boundary for dashboard reads and live-tail subscription.
 
   The local source preserves the embedded-library behavior. The data-plane
-  source delegates historical reads to one configured Rust HTTP client and
-  rejects live tail explicitly; it never falls back to `TimelessLogs`.
+  source delegates historical reads to one configured Rust HTTP client, and
+  live tail too when that client is tail-capable; it never falls back to
+  `TimelessLogs`.
   """
 
   @callback query(keyword(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -69,8 +70,9 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
 
   Set `:client` to a module implementing `query/1` and `stats/0`, such as the
   release Stack adapter. A two-argument client can instead be supplied with
-  `:client_opts`. Live tail is not part of the first release API and fails
-  explicitly rather than starting or consulting the embedded owner.
+  `:client_opts`. Live tail streams through the client's `tail/3` when it
+  exports one; with a tail-less client it fails explicitly rather than
+  starting or consulting the embedded owner.
   """
 
   @behaviour TimelessLogsDashboard.HistoricalSource
@@ -95,6 +97,11 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
   @impl true
   def subscribe(opts) do
     with {:ok, client} <- Keyword.fetch(opts, :client) do
+      # function_exported?/3 never loads the module, and outside embedded
+      # mode (mix dev/test) it may not be loaded yet — without this, a
+      # tail-capable client is reported as tail-less.
+      Code.ensure_loaded(client)
+
       cond do
         not function_exported?(client, :tail, 3) ->
           {:error, {:unsupported_capability, :logs_live_tail}}
@@ -128,6 +135,9 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
   defp invoke(opts, function, args) do
     with {:ok, client} <- Keyword.fetch(opts, :client) do
       client_opts = Keyword.get(opts, :client_opts, [])
+
+      # Same lazy-loading caveat as subscribe/1 above.
+      Code.ensure_loaded(client)
 
       cond do
         client_opts != [] and function_exported?(client, function, length(args) + 1) ->
