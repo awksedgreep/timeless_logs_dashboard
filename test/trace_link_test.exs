@@ -59,7 +59,6 @@ defmodule TimelessLogsDashboard.TraceLinkTest do
     html =
       render_component(&Components.search_tab/1, %{
         entries: [entry()],
-        total: 1,
         search: "",
         level: "",
         window: "24h",
@@ -101,5 +100,29 @@ defmodule TimelessLogsDashboard.TraceLinkTest do
 
     assert html =~ @trace_id, "the id must still be visible"
     refute html =~ "nav=traces"
+  end
+
+  test "pagination links retain custom bounds and the trace filter" do
+    html =
+      render_component(&Components.search_tab/1, %{
+        entries: [entry()],
+        search: "",
+        level: "",
+        window: "all",
+        windows: TimelessLogsDashboard.Page.window_options(),
+        current_page: 1,
+        per_page: 25,
+        has_more: true,
+        since: "1700000000000000",
+        until: "1800000000000000",
+        trace_id: @trace_id,
+        page: page(),
+        socket: socket(),
+        traces_page: :traces
+      })
+
+    assert html =~ "since=1700000000000000"
+    assert html =~ "until=1800000000000000"
+    assert html =~ "trace_id=#{@trace_id}"
   end
 end

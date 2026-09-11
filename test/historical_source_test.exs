@@ -22,7 +22,12 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
 
     assert {:ok, %{entries: [%{message: "kept"}]}} = HistoricalSource.query(level: :info)
 
-    assert {:ok, %{total_entries: 7, storage_mode: :libsql, raw_ingested_bytes_total: 4_096}} =
+    assert {:ok,
+            %{
+              total_entries: 7,
+              storage_mode: "memory",
+              raw_ingested_bytes_total: 4_096
+            }} =
              HistoricalSource.stats()
 
     # This fixture client has no tail/3: subscribe reports the missing
@@ -47,6 +52,32 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
     assert :ok = HistoricalSource.unsubscribe()
   end
 
+  test "data-plane source replaces a stale tail task" do
+    Application.put_env(
+      :timeless_logs_dashboard,
+      :historical_source,
+      {HistoricalSource.DataPlane, client: __MODULE__.DeadTailClient}
+    )
+
+    assert :ok = HistoricalSource.subscribe()
+    assert_receive :dead_tail_started
+
+    assert :ok = HistoricalSource.subscribe()
+    assert_receive :dead_tail_started
+
+    assert :ok = HistoricalSource.unsubscribe()
+  end
+
+  test "data-plane stats use an honest remote fallback when mode is absent" do
+    Application.put_env(
+      :timeless_logs_dashboard,
+      :historical_source,
+      {HistoricalSource.DataPlane, client: __MODULE__.NoModeClient}
+    )
+
+    assert {:ok, %{storage_mode: :remote}} = HistoricalSource.stats()
+  end
+
   defmodule TailClient do
     def tail("*", subscriber, _opts) do
       {:ok, pid} =
@@ -62,6 +93,20 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
 
       {:ok, pid}
     end
+  end
+
+  defmodule DeadTailClient do
+    def tail("*", subscriber, _opts) do
+      pid = spawn(fn -> :ok end)
+      reference = Process.monitor(pid)
+      assert_receive {:DOWN, ^reference, :process, ^pid, _reason}
+      send(subscriber, :dead_tail_started)
+      {:ok, pid}
+    end
+  end
+
+  defmodule NoModeClient do
+    def stats, do: {:ok, %{total_entries: 1}}
   end
 
   describe "local source honours the subscribe/unsubscribe contract" do
@@ -121,6 +166,7 @@ defmodule TimelessLogsDashboard.HistoricalSourceTest do
          "compressed_bytes" => 100,
          "raw_blocks" => 1,
          "raw_bytes" => 10,
+         "storage_mode" => "memory",
          "raw_ingested_bytes_total" => 4_096
        }}
     end

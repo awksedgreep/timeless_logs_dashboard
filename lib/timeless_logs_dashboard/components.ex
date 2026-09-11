@@ -5,7 +5,6 @@ defmodule TimelessLogsDashboard.Components do
   # --- Search tab ---
 
   attr(:entries, :list, required: true)
-  attr(:total, :integer, required: true)
   attr(:search, :string, required: true)
   attr(:level, :string, required: true)
   attr(:window, :string, required: true)
@@ -13,13 +12,20 @@ defmodule TimelessLogsDashboard.Components do
   attr(:current_page, :integer, required: true)
   attr(:per_page, :integer, required: true)
   attr(:has_more, :boolean, required: true)
+  attr(:since, :string, default: "")
+  attr(:until, :string, default: "")
+  attr(:trace_id, :string, default: "")
   attr(:page, :any, required: true)
   attr(:socket, :any, required: true)
   attr(:traces_page, :atom, default: nil)
 
   def search_tab(assigns) do
     levels = ~w(debug info warning error)
-    assigns = assigns |> assign(:levels, levels)
+
+    assigns =
+      assigns
+      |> assign(:levels, levels)
+      |> assign(:trace_path, trace_path(assigns))
 
     ~H"""
     <div class="mb-4">
@@ -64,10 +70,10 @@ defmodule TimelessLogsDashboard.Components do
         <div class="card-body p-0">
           <div class="d-flex justify-content-between align-items-center px-3 py-2">
             <small class="text-muted">
-              Showing {length(@entries)} {if length(@entries) == 1, do: "entry", else: "entries"} of {@total} in {window_label(
+              Showing {length(@entries)} {if length(@entries) == 1, do: "entry", else: "entries"} in {window_label(
                 @windows,
                 @window
-              )}
+              )} — {if @has_more, do: "more available", else: "end of results"}
             </small>
             <small class="text-muted">
               Page {@current_page}
@@ -89,9 +95,7 @@ defmodule TimelessLogsDashboard.Components do
               <.entry_row
                 :for={entry <- @entries}
                 entry={entry}
-                page={@page}
-                socket={@socket}
-                traces_page={@traces_page}
+                trace_path={@trace_path}
               />
             </tbody>
           </table>
@@ -105,6 +109,9 @@ defmodule TimelessLogsDashboard.Components do
             search={@search}
             level={@level}
             per_page={@per_page}
+            since={@since}
+            until={@until}
+            trace_id={@trace_id}
           />
         </div>
       </div>
@@ -113,9 +120,8 @@ defmodule TimelessLogsDashboard.Components do
   end
 
   attr(:entry, :any, required: true)
-  attr(:page, :any, default: nil)
-  attr(:socket, :any, default: nil)
-  attr(:traces_page, :atom, default: nil)
+  attr(:id, :string, default: nil)
+  attr(:trace_path, :string, default: nil)
 
   defp entry_row(assigns) do
     meta = assigns.entry.metadata || %{}
@@ -123,6 +129,8 @@ defmodule TimelessLogsDashboard.Components do
     trace_id =
       Map.get(meta, "trace_id") || Map.get(meta, :trace_id) ||
         Map.get(meta, "otel_trace_id") || Map.get(meta, :otel_trace_id)
+
+    trace_id = trace_id_text(trace_id)
 
     other_meta =
       meta
@@ -137,16 +145,7 @@ defmodule TimelessLogsDashboard.Components do
         :otel_span_id
       ])
 
-    trace_link =
-      if trace_id && assigns.traces_page && assigns.socket && assigns.page do
-        Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
-          assigns.socket,
-          assigns.traces_page,
-          assigns.page.node,
-          %{},
-          %{"nav" => "traces", "trace_id" => to_string(trace_id)}
-        )
-      end
+    trace_link = trace_link(assigns.trace_path, trace_id)
 
     assigns =
       assigns
@@ -155,7 +154,7 @@ defmodule TimelessLogsDashboard.Components do
       |> assign(:other_meta, other_meta)
 
     ~H"""
-    <tr>
+    <tr id={@id}>
       <td class="text-monospace" style="font-size: 0.8rem;">
         {format_timestamp(@entry.timestamp)}
       </td>
@@ -211,6 +210,9 @@ defmodule TimelessLogsDashboard.Components do
   attr(:level, :string, required: true)
   attr(:window, :string, required: true)
   attr(:per_page, :integer, required: true)
+  attr(:since, :string, default: "")
+  attr(:until, :string, default: "")
+  attr(:trace_id, :string, default: "")
 
   defp pagination(assigns) do
     assigns =
@@ -225,7 +227,20 @@ defmodule TimelessLogsDashboard.Components do
           <span :if={@current_page <= 1} class="page-link">Prev</span>
           <.link
             :if={@current_page > 1}
-            patch={page_path(@socket, @page, @prev_page, @search, @level, @window, @per_page)}
+            patch={
+              page_path(
+                @socket,
+                @page,
+                @prev_page,
+                @search,
+                @level,
+                @window,
+                @per_page,
+                @since,
+                @until,
+                @trace_id
+              )
+            }
             class="page-link"
           >
             Prev
@@ -238,7 +253,20 @@ defmodule TimelessLogsDashboard.Components do
           <span :if={not @has_more} class="page-link">Next</span>
           <.link
             :if={@has_more}
-            patch={page_path(@socket, @page, @next_page, @search, @level, @window, @per_page)}
+            patch={
+              page_path(
+                @socket,
+                @page,
+                @next_page,
+                @search,
+                @level,
+                @window,
+                @per_page,
+                @since,
+                @until,
+                @trace_id
+              )
+            }
             class="page-link"
           >
             Next
@@ -253,26 +281,45 @@ defmodule TimelessLogsDashboard.Components do
   # to the default window, so a search over "All time" or "Last 7 days" would
   # silently return 24-hour results from page two onward — with a different
   # total than the one that produced the pager.
-  defp page_path(socket, page, page_num, search, level, window, per_page) do
+  defp page_path(
+         socket,
+         page,
+         page_num,
+         search,
+         level,
+         window,
+         per_page,
+         since,
+         until_param,
+         trace_id
+       ) do
     Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
       socket,
       page,
-      page_params(page_num, search, level, window, per_page)
+      page_params(page_num, search, level, window, per_page, since, until_param, trace_id)
     )
   end
 
   @doc false
-  # Split out from page_path/7 so it can be asserted without a router. The
+  # Split out from page_path/10 so it can be asserted without a router. The
   # range has to travel with the page number: without it, paging falls back to
   # the default window, so a search over "All time" or "Last 7 days" would
   # silently return 24-hour results from page two onward — with a total that no
   # longer matches the pager that produced it.
   def page_params(page_num, search, level, window, per_page) do
+    page_params(page_num, search, level, window, per_page, "", "", "")
+  end
+
+  @doc false
+  def page_params(page_num, search, level, window, per_page, since, until_param, trace_id) do
     %{
       nav: "search",
       search: search,
       level: level,
       window: window,
+      since: since,
+      until: until_param,
+      trace_id: trace_id,
       p: to_string(page_num),
       per_page: to_string(per_page)
     }
@@ -379,7 +426,10 @@ defmodule TimelessLogsDashboard.Components do
 
   # --- Live Tail tab ---
 
-  attr(:entries, :list, required: true)
+  attr(:entries, :list, default: [])
+  attr(:stream, :any, default: [])
+  attr(:streaming, :boolean, default: false)
+  attr(:entry_count, :integer, default: 0)
   attr(:subscribed, :boolean, required: true)
   attr(:error, :string, default: nil)
   attr(:page, :any, default: nil)
@@ -387,6 +437,14 @@ defmodule TimelessLogsDashboard.Components do
   attr(:traces_page, :atom, default: nil)
 
   def tail_tab(assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :entry_count,
+        if(assigns.streaming, do: assigns.entry_count, else: length(assigns.entries))
+      )
+      |> assign(:trace_path, trace_path(assigns))
+
     ~H"""
     <div class="mb-4">
       <div :if={@error} class="alert alert-warning" role="alert">{@error}</div>
@@ -399,7 +457,7 @@ defmodule TimelessLogsDashboard.Components do
         </button>
         <small class="text-muted">
           <%= if @subscribed do %>
-            Streaming... ({length(@entries)} entries)
+            Streaming... ({@entry_count} entries)
           <% else %>
             Paused
           <% end %>
@@ -417,8 +475,8 @@ defmodule TimelessLogsDashboard.Components do
                 <th style="width: 200px;">Metadata</th>
               </tr>
             </thead>
-            <tbody>
-              <tr :if={@entries == []}>
+            <tbody id="tail-entries" phx-update={if @streaming, do: "stream"}>
+              <tr id="tail-empty" style={if @entry_count > 0, do: "display: none;"}>
                 <td colspan="4" class="text-center text-muted py-4">
                   {if @subscribed,
                     do: "Waiting for log entries...",
@@ -426,11 +484,15 @@ defmodule TimelessLogsDashboard.Components do
                 </td>
               </tr>
               <.entry_row
+                :for={{dom_id, {_sequence, entry}} <- @stream}
+                id={dom_id}
+                entry={entry}
+                trace_path={@trace_path}
+              />
+              <.entry_row
                 :for={entry <- @entries}
                 entry={entry}
-                page={@page}
-                socket={@socket}
-                traces_page={@traces_page}
+                trace_path={@trace_path}
               />
             </tbody>
           </table>
@@ -469,10 +531,65 @@ defmodule TimelessLogsDashboard.Components do
   defp format_metadata(meta) when meta == %{}, do: ""
 
   defp format_metadata(meta) when is_map(meta) do
-    meta
-    |> Enum.reject(fn {_k, v} -> v == "" or is_nil(v) end)
-    |> Enum.map_join(", ", fn {k, v} -> "#{k}=#{v}" end)
+    entries = Enum.reject(meta, fn {_k, v} -> v == "" or is_nil(v) end)
+    visible = Enum.take(entries, 10)
+
+    formatted =
+      Enum.map_join(visible, ", ", fn {key, value} ->
+        "#{format_metadata_key(key)}=#{bounded_inspect(value, 120)}"
+      end)
+
+    case length(entries) - length(visible) do
+      hidden when hidden > 0 -> "#{formatted}, +#{hidden} more"
+      _ -> formatted
+    end
   end
+
+  defp format_metadata_key(key) when is_binary(key), do: truncate(key, 60)
+  defp format_metadata_key(key) when is_atom(key), do: key |> Atom.to_string() |> truncate(60)
+  defp format_metadata_key(key), do: bounded_inspect(key, 60)
+
+  defp bounded_inspect(value, max_length) do
+    value
+    |> inspect(limit: 20, printable_limit: max_length, width: :infinity)
+    |> truncate(max_length)
+  end
+
+  defp truncate(value, max_length) do
+    if String.length(value) > max_length,
+      do: String.slice(value, 0, max_length - 1) <> "…",
+      else: value
+  end
+
+  defp trace_path(%{traces_page: nil}), do: nil
+  defp trace_path(%{socket: nil}), do: nil
+  defp trace_path(%{page: nil}), do: nil
+
+  defp trace_path(assigns) do
+    Phoenix.LiveDashboard.PageBuilder.live_dashboard_path(
+      assigns.socket,
+      assigns.traces_page,
+      assigns.page.node,
+      %{},
+      %{"nav" => "traces"}
+    )
+  end
+
+  defp trace_link(_path, nil), do: nil
+  defp trace_link(nil, _trace_id), do: nil
+
+  defp trace_link(path, trace_id) do
+    separator = if String.contains?(path, "?"), do: "&", else: "?"
+    path <> separator <> URI.encode_query(%{"trace_id" => to_string(trace_id)})
+  end
+
+  defp trace_id_text(nil), do: nil
+  defp trace_id_text(trace_id) when is_binary(trace_id), do: trace_id
+
+  defp trace_id_text(trace_id) when is_atom(trace_id) or is_number(trace_id),
+    do: to_string(trace_id)
+
+  defp trace_id_text(trace_id), do: bounded_inspect(trace_id, 120)
 
   # The durable headline: what the user's data actually costs on disk.
   # `total_bytes` is the engine's data-block payload (bytes_on_disk) — no

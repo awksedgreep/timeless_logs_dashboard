@@ -81,6 +81,18 @@ scope "/" do
 end
 ```
 
+Options for `live_dashboard` can be passed through without replacing the logs
+page. The LiveView session name is also configurable when multiple dashboards
+share a router:
+
+```elixir
+timeless_logs_dashboard "/dashboard",
+  live_dashboard: [
+    live_session_name: :admin_dashboard,
+    additional_pages: [traces: TimelessTracesDashboard.Page]
+  ]
+```
+
 Or add the page directly to an existing LiveDashboard:
 
 ```elixir
