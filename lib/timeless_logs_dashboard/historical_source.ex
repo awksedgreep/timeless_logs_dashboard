@@ -106,14 +106,22 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
         not function_exported?(client, :tail, 3) ->
           {:error, {:unsupported_capability, :logs_live_tail}}
 
-        Process.get({__MODULE__, :tail_task}) != nil ->
+        tail_task_alive?() ->
           :ok
 
         true ->
+          Process.delete({__MODULE__, :tail_task})
+
           case client.tail("*", self(), Keyword.get(opts, :client_opts, [])) do
             {:ok, task} ->
-              Process.put({__MODULE__, :tail_task}, task)
-              :ok
+              case tail_task_pid(task) do
+                pid when is_pid(pid) ->
+                  Process.put({__MODULE__, :tail_task}, pid)
+                  :ok
+
+                nil ->
+                  {:error, {:invalid_tail_task, task}}
+              end
 
             {:error, _reason} = error ->
               error
@@ -127,10 +135,28 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
   @impl true
   def unsubscribe(_opts) do
     case Process.delete({__MODULE__, :tail_task}) do
-      nil -> :ok
-      pid -> Process.exit(pid, :kill) && :ok
+      nil ->
+        :ok
+
+      pid when is_pid(pid) ->
+        Process.exit(pid, :kill)
+        :ok
+
+      _stale_task ->
+        :ok
     end
   end
+
+  defp tail_task_alive? do
+    case Process.get({__MODULE__, :tail_task}) do
+      pid when is_pid(pid) -> Process.alive?(pid)
+      _ -> false
+    end
+  end
+
+  defp tail_task_pid(pid) when is_pid(pid), do: pid
+  defp tail_task_pid(%Task{pid: pid}) when is_pid(pid), do: pid
+  defp tail_task_pid(_task), do: nil
 
   defp invoke(opts, function, args) do
     with {:ok, client} <- Keyword.fetch(opts, :client) do
@@ -171,7 +197,7 @@ defmodule TimelessLogsDashboard.HistoricalSource.DataPlane do
       compaction_count: value(stats, :optimize_count, 0),
       oldest_timestamp: value(stats, :oldest_timestamp, nil),
       newest_timestamp: value(stats, :newest_timestamp, nil),
-      storage_mode: :libsql
+      storage_mode: value(stats, :storage_mode, :remote) || :remote
     }
   end
 

@@ -15,8 +15,6 @@ defmodule TimelessLogsDashboard.SearchWindowTest do
 
   use ExUnit.Case, async: false
 
-  import Phoenix.LiveViewTest, only: [render_component: 2]
-
   alias Phoenix.LiveDashboard.PageBuilder
   alias TimelessLogsDashboard.Page
 
@@ -142,6 +140,25 @@ defmodule TimelessLogsDashboard.SearchWindowTest do
       assert params.per_page == "50"
       assert params.nav == "search"
     end
+
+    test "custom bounds and trace filters survive paging" do
+      params =
+        Components.page_params(
+          4,
+          "boom",
+          "warning",
+          "all",
+          100,
+          "1700000000000000",
+          "1800000000000000",
+          "trace-123"
+        )
+
+      assert params.since == "1700000000000000"
+      assert params.until == "1800000000000000"
+      assert params.trace_id == "trace-123"
+      assert params.p == "4"
+    end
   end
 
   test "the ranges match the traces plugin" do
@@ -163,5 +180,44 @@ defmodule TimelessLogsDashboard.SearchWindowTest do
     assert Keyword.get(filters, :offset) == 25
     assert Keyword.get(filters, :limit) == 25
     assert Keyword.has_key?(filters, :since)
+  end
+
+  describe "malformed query params" do
+    test "invalid page and page-size values use safe defaults" do
+      filters = search(%{"p" => "second", "per_page" => "lots"})
+
+      assert Keyword.get(filters, :offset) == 0
+      assert Keyword.get(filters, :limit) == 25
+    end
+
+    test "partially numeric page values are rejected" do
+      filters = search(%{"p" => "2oops", "per_page" => "50rows"})
+
+      assert Keyword.get(filters, :offset) == 0
+      assert Keyword.get(filters, :limit) == 25
+    end
+
+    test "invalid since falls back to the selected window" do
+      filters = search(%{"since" => "yesterday"})
+
+      assert since = Keyword.get(filters, :since)
+
+      day_ago =
+        DateTime.utc_now() |> DateTime.add(-86_400, :second) |> DateTime.to_unix(:microsecond)
+
+      assert_in_delta since, day_ago, 60_000_000
+    end
+
+    test "invalid until is ignored" do
+      filters = search(%{"until" => "eventually"})
+
+      refute Keyword.has_key?(filters, :until)
+    end
+
+    test "unknown levels are ignored without creating atoms" do
+      filters = search(%{"level" => "fatal-from-a-user"})
+
+      refute Keyword.has_key?(filters, :level)
+    end
   end
 end

@@ -71,4 +71,74 @@ defmodule TimelessLogsDashboard.ComponentsTest do
       assert html =~ "pending"
     end
   end
+
+  describe "log entry rendering" do
+    defp render_search(entry, overrides \\ %{}) do
+      render_component(
+        &Components.search_tab/1,
+        Map.merge(
+          %{
+            entries: [entry],
+            search: "",
+            level: "",
+            window: "24h",
+            windows: TimelessLogsDashboard.Page.window_options(),
+            current_page: 1,
+            per_page: 25,
+            has_more: false,
+            page: nil,
+            socket: nil
+          },
+          overrides
+        )
+      )
+    end
+
+    defp entry(metadata) do
+      %{
+        timestamp: 1_700_000_000_000_000,
+        level: :info,
+        message: "structured metadata",
+        metadata: metadata
+      }
+    end
+
+    test "non-String.Chars metadata values render safely" do
+      html =
+        render_search(
+          entry(%{
+            pid: self(),
+            tuple: {:ok, 42},
+            map: %{nested: true},
+            list: [:not, :a, :charlist],
+            trace_id: {:also, :structured}
+          })
+        )
+
+      assert html =~ "#PID"
+      assert html =~ "{:ok, 42}"
+      assert html =~ "%{nested: true}"
+      assert html =~ "[:not, :a, :charlist]"
+      assert html =~ "{:also, :structured}"
+    end
+
+    test "large metadata is bounded by value length and key count" do
+      metadata =
+        1..11
+        |> Map.new(fn key -> {"key-#{key}", String.duplicate(Integer.to_string(key), 500)} end)
+
+      html = render_search(entry(metadata))
+
+      assert html =~ "+1 more"
+      refute html =~ String.duplicate("1", 500)
+    end
+
+    test "search summary does not claim the current page size is a total" do
+      html = render_search(entry(%{}), %{has_more: false})
+
+      assert html =~ "Showing 1 entry"
+      assert html =~ "end of results"
+      refute html =~ "of 1"
+    end
+  end
 end

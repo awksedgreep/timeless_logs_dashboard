@@ -19,31 +19,36 @@ defmodule TimelessLogsDashboard.Page do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
-    {:ok,
-     assign(socket,
-       entries: [],
-       total: 0,
-       has_more: false,
-       stats: nil,
-       tail_entries: [],
-       subscribed: false,
-       tail_error: nil,
-       search: "",
-       level: "",
-       window: @default_window,
-       per_page: 25,
-       current_page: 1
-     )}
+  def mount(params, _session, socket) do
+    socket =
+      socket
+      |> assign(
+        nav: resolve_nav(params),
+        windows: window_options(),
+        entries: [],
+        has_more: false,
+        stats: nil,
+        subscribed: false,
+        tail_error: nil,
+        tail_count: 0,
+        tail_sequence: 0,
+        search: "",
+        level: "",
+        window: @default_window,
+        since: "",
+        until: "",
+        trace_id: "",
+        per_page: 25,
+        current_page: 1
+      )
+      |> stream_configure(:tail_entries, dom_id: fn {id, _entry} -> "tail-entry-#{id}" end)
+      |> stream(:tail_entries, [])
+
+    {:ok, socket}
   end
 
   @impl true
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:nav, resolve_nav(assigns.page.params))
-      |> assign(:windows, window_options())
-
     ~H"""
     <.live_nav_bar
       id="log-tabs"
@@ -66,7 +71,6 @@ defmodule TimelessLogsDashboard.Page do
     <.search_tab
       :if={@nav == "search"}
       entries={@entries}
-      total={@total}
       search={@search}
       level={@level}
       window={@window}
@@ -74,6 +78,9 @@ defmodule TimelessLogsDashboard.Page do
       current_page={@current_page}
       per_page={@per_page}
       has_more={@has_more}
+      since={@since}
+      until={@until}
+      trace_id={@trace_id}
       page={@page}
       socket={@socket}
       traces_page={:traces}
@@ -81,7 +88,9 @@ defmodule TimelessLogsDashboard.Page do
     <.stats_tab :if={@nav == "stats"} stats={@stats} />
     <.tail_tab
       :if={@nav == "tail"}
-      entries={@tail_entries}
+      stream={@streams.tail_entries}
+      streaming
+      entry_count={@tail_count}
       subscribed={@subscribed}
       error={@tail_error}
       page={@page}
@@ -96,7 +105,12 @@ defmodule TimelessLogsDashboard.Page do
     nav = resolve_nav(params)
 
     if Map.get(params, "nav") == nav do
-      socket = apply_nav(nav, params, socket)
+      socket =
+        socket
+        |> assign(:nav, nav)
+        |> maybe_unsubscribe(nav)
+        |> apply_nav(nav, params)
+
       {:noreply, socket}
     else
       to =
@@ -106,24 +120,21 @@ defmodule TimelessLogsDashboard.Page do
     end
   end
 
-  defp apply_nav("search", params, socket) do
+  defp apply_nav(socket, "search", params) do
     search = Map.get(params, "search", "")
-    level = Map.get(params, "level", "")
-    window = Map.get(params, "window", @default_window)
-    since = params |> Map.get("since", "") |> default_since(window)
-    until_param = Map.get(params, "until", "")
+    level = normalize_level(Map.get(params, "level", ""))
+    window = params |> Map.get("window", @default_window) |> normalize_window()
+    {since, since_filter} = timestamp_bound(Map.get(params, "since", ""), window)
+    {until_param, until_filter} = optional_integer(Map.get(params, "until", ""))
     trace_id = Map.get(params, "trace_id", "")
-    per_page = params |> Map.get("per_page", "25") |> String.to_integer() |> max(1) |> min(100)
-    current_page = params |> Map.get("p", "1") |> String.to_integer() |> max(1)
+    per_page = params |> Map.get("per_page", "25") |> integer_or(25) |> max(1) |> min(100)
+    current_page = params |> Map.get("p", "1") |> integer_or(1) |> max(1)
     offset = (current_page - 1) * per_page
 
     filters = build_filters(search, level)
-    filters = if since != "", do: [{:since, String.to_integer(since)} | filters], else: filters
+    filters = if since_filter, do: [{:since, since_filter} | filters], else: filters
 
-    filters =
-      if until_param != "",
-        do: [{:until, String.to_integer(until_param)} | filters],
-        else: filters
+    filters = if until_filter, do: [{:until, until_filter} | filters], else: filters
 
     filters =
       if trace_id != "", do: [{:metadata, %{"trace_id" => trace_id}} | filters], else: filters
@@ -132,16 +143,17 @@ defmodule TimelessLogsDashboard.Page do
 
     case HistoricalSource.query(query_opts) do
       {:ok, %{entries: entries} = result} ->
-        total = Map.get(result, :total, length(entries))
         has_more = Map.get(result, :has_more, false)
 
         assign(socket,
           entries: entries,
-          total: total,
           has_more: has_more,
           search: search,
           level: level,
           window: window,
+          since: since,
+          until: until_param,
+          trace_id: trace_id,
           per_page: per_page,
           current_page: current_page
         )
@@ -149,36 +161,56 @@ defmodule TimelessLogsDashboard.Page do
       {:error, _} ->
         assign(socket,
           entries: [],
-          total: 0,
           has_more: false,
           search: search,
           level: level,
           window: window,
+          since: since,
+          until: until_param,
+          trace_id: trace_id,
           per_page: per_page,
           current_page: current_page
         )
     end
   end
 
-  defp apply_nav("stats", _params, socket) do
+  defp apply_nav(socket, "stats", _params) do
     case HistoricalSource.stats() do
       {:ok, stats} -> assign(socket, :stats, stats)
       _ -> socket
     end
   end
 
-  defp apply_nav("tail", _params, socket) do
+  defp apply_nav(socket, "tail", _params) do
     if connected?(socket) and not socket.assigns.subscribed do
       case HistoricalSource.subscribe() do
-        :ok -> assign(socket, subscribed: true, tail_entries: [], tail_error: nil)
-        {:error, reason} -> assign(socket, subscribed: false, tail_error: inspect(reason))
+        :ok ->
+          socket
+          |> assign(subscribed: true, tail_count: 0, tail_error: nil)
+          |> stream(:tail_entries, [], reset: true)
+
+        {:error, reason} ->
+          assign(socket, subscribed: false, tail_error: inspect(reason))
       end
     else
       socket
     end
   end
 
-  defp apply_nav(_, _params, socket), do: socket
+  defp apply_nav(socket, _, _params), do: socket
+
+  defp maybe_unsubscribe(socket, "tail"), do: socket
+
+  defp maybe_unsubscribe(socket, _nav) do
+    if Map.get(socket.assigns, :subscribed, false) do
+      case HistoricalSource.unsubscribe() do
+        :ok -> assign(socket, subscribed: false, tail_error: nil)
+        {:error, reason} -> assign(socket, subscribed: false, tail_error: inspect(reason))
+      end
+    else
+      socket
+    end
+  end
 
   defp resolve_nav(params) do
     case Map.get(params, "nav") do
@@ -191,10 +223,54 @@ defmodule TimelessLogsDashboard.Page do
     filters = []
     filters = if search != "", do: [{:message, search} | filters], else: filters
 
-    filters =
-      if level != "", do: [{:level, String.to_existing_atom(level)} | filters], else: filters
+    case level_atom(level) do
+      nil -> filters
+      level_atom -> [{:level, level_atom} | filters]
+    end
+  end
 
-    filters
+  defp normalize_level(level) when level in ~w(debug info warning error), do: level
+  defp normalize_level(_level), do: ""
+
+  defp level_atom("debug"), do: :debug
+  defp level_atom("info"), do: :info
+  defp level_atom("warning"), do: :warning
+  defp level_atom("error"), do: :error
+  defp level_atom(_level), do: nil
+
+  defp normalize_window("all"), do: "all"
+  defp normalize_window(window) when is_map_key(@windows, window), do: window
+  defp normalize_window(_window), do: @default_window
+
+  defp integer_or(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> integer
+      _ -> default
+    end
+  end
+
+  defp integer_or(_value, default), do: default
+
+  defp optional_integer(""), do: {"", nil}
+
+  defp optional_integer(value) do
+    case integer_or(value, nil) do
+      nil -> {"", nil}
+      integer -> {Integer.to_string(integer), integer}
+    end
+  end
+
+  defp timestamp_bound(value, window) do
+    case optional_integer(value) do
+      {"", nil} ->
+        case window_start(window) do
+          "" -> {"", nil}
+          default -> {"", String.to_integer(default)}
+        end
+
+      parsed ->
+        parsed
+    end
   end
 
   # A message search has no pushdown in the libSQL engine: the store returns
@@ -216,9 +292,6 @@ defmodule TimelessLogsDashboard.Page do
       {"30d", "Last 30 days"},
       {"all", "All time"}
     ]
-
-  defp default_since("", window), do: window_start(window)
-  defp default_since(since, _window), do: since
 
   defp window_start("all"), do: ""
 
@@ -255,11 +328,17 @@ defmodule TimelessLogsDashboard.Page do
 
   @impl true
   def handle_event("search", %{"search" => search, "level" => level} = form, socket) do
+    # Submitting the visible form starts a new search. Custom bounds and the
+    # trace filter are intentionally reset because the form has no controls
+    # for editing them; pagination, by contrast, preserves them verbatim.
     params = %{
       nav: "search",
       search: search,
       level: level,
       window: Map.get(form, "window", @default_window),
+      since: "",
+      until: "",
+      trace_id: "",
       p: "1",
       per_page: to_string(socket.assigns.per_page)
     }
@@ -282,19 +361,25 @@ defmodule TimelessLogsDashboard.Page do
       end
     else
       case HistoricalSource.subscribe() do
-        :ok -> {:noreply, assign(socket, subscribed: true, tail_entries: [], tail_error: nil)}
-        {:error, reason} -> {:noreply, assign(socket, tail_error: inspect(reason))}
+        :ok ->
+          socket =
+            socket
+            |> assign(subscribed: true, tail_count: 0, tail_error: nil)
+            |> stream(:tail_entries, [], reset: true)
+
+          {:noreply, socket}
+
+        {:error, reason} ->
+          {:noreply, assign(socket, tail_error: inspect(reason))}
       end
     end
   end
 
   @impl true
   def handle_refresh(socket) do
-    nav = resolve_nav(socket.assigns.page.params)
-
     socket =
-      case nav do
-        "stats" -> apply_nav("stats", %{}, socket)
+      case socket.assigns.nav do
+        "stats" -> apply_nav(socket, "stats", %{})
         _ -> socket
       end
 
@@ -303,8 +388,21 @@ defmodule TimelessLogsDashboard.Page do
 
   @impl true
   def handle_info({:timeless_logs, :entry, entry}, socket) do
-    tail = [entry | socket.assigns.tail_entries] |> Enum.take(@tail_cap)
-    {:noreply, assign(socket, :tail_entries, tail)}
+    if socket.assigns.nav == "tail" and socket.assigns.subscribed do
+      sequence = socket.assigns.tail_sequence + 1
+
+      socket =
+        socket
+        |> assign(
+          tail_sequence: sequence,
+          tail_count: min(socket.assigns.tail_count + 1, @tail_cap)
+        )
+        |> stream_insert(:tail_entries, {sequence, entry}, at: 0, limit: -@tail_cap)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info(_, socket), do: {:noreply, socket}

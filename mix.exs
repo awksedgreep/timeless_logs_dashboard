@@ -30,8 +30,7 @@ defmodule TimelessLogsDashboard.MixProject do
       {:timeless_logs, "~> 1.11"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_view, "~> 1.0"},
-      {:jason, "~> 1.4"},
-      {:bandit, "~> 1.6"},
+      {:bandit, "~> 1.6", only: :dev},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:igniter, "~> 0.6", optional: true}
     ]
